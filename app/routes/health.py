@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from sqlalchemy import text
 from app.utils.response import success_response
 from app.extensions import get_db
+from app.config import settings
 
 router = APIRouter(tags=["系统状态"])
 
@@ -30,6 +31,6 @@ async def check_health(db: Session = Depends(get_db)):
         "database": db_status,
         "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
         "service": "文件闪传系统API",
-        "version": "2.0.0",
+        "version": settings.APP_VERSION,
         "message": "服务运行正常"
     })

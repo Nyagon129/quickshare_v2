@@ -32,6 +32,9 @@ __pycache__/
 alembic/__pycache__/
 alembic/versions/__pycache__/
 
+# Claude Code 本地配置（可能包含敏感信息）
+.claude/
+
 # IDE 配置文件
 .idea/
 .vscode/

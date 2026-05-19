@@ -278,19 +278,6 @@ def cleanup_expired_chunks(db: Session = None):
             logger.warning(f"清理Redis映射关系失败: {e}")
         
         # 第四步：删除数据库中过期的取件码记录
-        # 4.1 先删除引用这些取件码的其他表中的记录（解决外键约束）
-        try:
-            result = db.execute(text("SHOW TABLES LIKE 'registered_senders'"))
-            if result.fetchone():
-                deleted_senders = db.execute(
-                    text("DELETE FROM registered_senders WHERE code IN :codes"),
-                    {"codes": tuple(expired_codes)}
-                )
-                logger.info(f"删除 registered_senders 表中的 {deleted_senders.rowcount} 条记录")
-        except Exception as e:
-            logger.warning(f"清理 registered_senders 表失败（可能表不存在）: {e}")
-        
-        # 4.2 删除过期的取件码记录
         deleted_count = 0
         for pickup_code in expired_pickup_codes:
             try:

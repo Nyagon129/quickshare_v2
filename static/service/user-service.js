@@ -52,12 +52,7 @@ export async function register(username, password) {
         // 密码哈希处理
         const hashedPassword = await hashPassword(password);
         
-        // 打印日志，显示加密后的哈希值
         console.log('【用户服务】注册 - 用户名:', username);
-        console.log('【用户服务】注册 - 明文密码:', password);
-        console.log('【用户服务】注册 - 哈希后密码:', hashedPassword);
-        console.log('【用户服务】注册 - 密码长度:', password.length, '字符');
-        console.log('【用户服务】注册 - 哈希长度:', hashedPassword.length, '字符');
         
         const response = await apiRequest('POST', '/auth/register', {
             username,
@@ -92,12 +87,7 @@ export async function login(username, password) {
         // 密码哈希处理
         const hashedPassword = await hashPassword(password);
         
-        // 打印日志，显示加密后的哈希值
         console.log('【用户服务】登录 - 用户名:', username);
-        console.log('【用户服务】登录 - 明文密码:', password);
-        console.log('【用户服务】登录 - 哈希后密码:', hashedPassword);
-        console.log('【用户服务】登录 - 密码长度:', password.length, '字符');
-        console.log('【用户服务】登录 - 哈希长度:', hashedPassword.length, '字符');
         
         const response = await apiRequest('POST', '/auth/login', {
             username,

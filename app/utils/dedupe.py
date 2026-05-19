@@ -62,8 +62,8 @@ def derive_dedupe_fingerprint(
     # 你可以在 .env 里配置 DEDUPE_PEPPER；未配置时会回退到 JWT_SECRET_KEY（仍然是服务器秘密）
     pepper = (settings.DEDUPE_PEPPER or settings.JWT_SECRET_KEY or "").encode("utf-8")
     if not pepper:
-        # 理论上不会发生（JWT_SECRET_KEY 有默认值），但保底
-        pepper = b"quick-share-default-pepper"
+        import secrets
+        pepper = secrets.token_bytes(32)
 
     msg = f"{uid}:{ph}".encode("utf-8")
     return hmac.new(pepper, msg, hashlib.sha256).hexdigest()

@@ -5,7 +5,7 @@ from urllib.parse import quote_plus
 class Settings(BaseSettings):
     APP_NAME: str = "文件闪传系统"
     APP_VERSION: str = "1.0.0"
-    DEBUG: bool = True
+    DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
     
     # 数据库配置（优先从环境变量读取，如果没有则使用默认值）
     DB_HOST: str = os.getenv("DB_HOST", "localhost")
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     REDIS_ENABLED: bool = os.getenv("REDIS_ENABLED", "false").lower() == "true"
 
     # JWT配置
-    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "your-secret-key-here")
+    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "change-me-in-production")
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 

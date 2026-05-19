@@ -130,43 +130,45 @@ export const CodeAPI = {
  * 文件分块传输API (服务器中转核心)
  */
 export const TransferAPI = {
-  // 【发送方】上传一个文件块
+  // 【发送方】上传一个文件块（带认证）
   async uploadChunk(code, chunkIndex, chunkData, totalChunks) {
     const formData = new FormData();
     formData.append("chunk_index", chunkIndex);
     formData.append("chunk_data", new Blob([chunkData]), `chunk_${chunkIndex}`);
     formData.append("total_chunks", totalChunks);
 
-    // 注意：这里直接使用 ${API_BASE}，不走 apiRequest 包装，以便上传二进制数据
-    const response = await fetch(
-      `${API_BASE}${API_VERSION}/transfer/${code}/upload-chunk`,
-      {
-        method: "POST",
-        body: formData,
-      }
-    );
+    const url = `${API_BASE}${API_VERSION}/relay/codes/${code}/upload-chunk?chunk_index=${chunkIndex}`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: formData,
+    });
     return await response.json();
   },
 
-  // 【发送方】通知服务器上传完成
-  async completeUpload(code, fileHash) {
-    return await apiRequest("POST", `/transfer/${code}/complete`, {
-      file_hash: fileHash,
+  // 【发送方】通知服务器上传完成（带认证）
+  async completeUpload(code, fileInfo) {
+    const url = `${API_BASE}${API_VERSION}/relay/codes/${code}/upload-complete`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify(fileInfo),
     });
+    return await response.json();
   },
 
   // 【接收方】获取一个文件块
   async downloadChunk(code, chunkIndex) {
     const response = await fetch(
-      `${API_BASE}${API_VERSION}/transfer/${code}/download-chunk?chunk_index=${chunkIndex}`
+      `${API_BASE}${API_VERSION}/relay/codes/${code}/download-chunk/${chunkIndex}`
     );
     if (!response.ok) throw new Error(`下载块失败: ${response.status}`);
-    return await response.arrayBuffer(); // 返回二进制数据
+    return await response.arrayBuffer();
   },
 
-  // 【接收方】获取文件块信息（总块数等）
-  async getChunkInfo(code) {
-    return await apiRequest("GET", `/transfer/${code}/chunk-info`);
+  // 【接收方】获取文件信息（总块数等）
+  async getFileInfo(code) {
+    return await apiRequest("GET", `/codes/${code}/file-info`);
   },
 };
 
@@ -192,8 +194,4 @@ export const HealthAPI = {
 /**
  * 测试用：预置的测试取件码 (功能不变)
  */
-export const TEST_CODES = {
-  WAIT01: "WAIT01",
-  TRAN02: "TRAN02",
-  DONE03: "DONE03",
-};
+export const TEST_CODES = {};

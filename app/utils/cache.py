@@ -36,30 +36,52 @@ class CacheManager:
     def __init__(self):
         self._redis_client = None
         self._use_redis = False
-        self._fallback_cache: Dict[str, Any] = {}  # 回退缓存（内存字典）
-        
+        self._fallback_cache: Dict[str, Any] = {}
+        self._redis_configured = REDIS_AVAILABLE and settings.REDIS_ENABLED
+        self._last_redis_attempt = 0  # 上次尝试重连的时间戳
+
         # 尝试初始化 Redis
-        if REDIS_AVAILABLE and settings.REDIS_ENABLED:
-            try:
-                self._redis_client = redis.Redis(
-                    host=settings.REDIS_HOST,
-                    port=settings.REDIS_PORT,
-                    db=settings.REDIS_DB,
-                    password=settings.REDIS_PASSWORD if settings.REDIS_PASSWORD else None,
-                    decode_responses=False,  # 不自动解码，因为我们需要存储二进制数据
-                    socket_connect_timeout=2,
-                    socket_timeout=2
-                )
-                # 测试连接
-                self._redis_client.ping()
-                self._use_redis = True
+        self._try_connect_redis()
+        if not self._use_redis:
+            if self._redis_configured:
+                logger.info("Redis 配置了但不可用，使用内存缓存")
+            else:
+                logger.info("Redis 未启用，使用内存字典缓存")
+
+    def _try_connect_redis(self):
+        """尝试连接 Redis（初始化连接 or 断线重连）"""
+        if not self._redis_configured:
+            return
+        import time
+        self._last_redis_attempt = time.time()
+        try:
+            self._redis_client = redis.Redis(
+                host=settings.REDIS_HOST,
+                port=settings.REDIS_PORT,
+                db=settings.REDIS_DB,
+                password=settings.REDIS_PASSWORD if settings.REDIS_PASSWORD else None,
+                decode_responses=False,
+                socket_connect_timeout=2,
+                socket_timeout=2
+            )
+            self._redis_client.ping()
+            self._use_redis = True
+            if not hasattr(self, '_redis_was_down'):
                 logger.info("✓ Redis 缓存已启用")
-            except Exception as e:
-                logger.warning(f"Redis 连接失败，使用内存字典缓存: {e}")
-                self._redis_client = None
-                self._use_redis = False
-        else:
-            logger.info("Redis 未启用，使用内存字典缓存")
+            else:
+                logger.info("✓ Redis 已恢复连接")
+                del self._redis_was_down
+        except Exception:
+            self._redis_client = None
+            self._use_redis = False
+            self._redis_was_down = True
+
+    def _should_retry_redis(self) -> bool:
+        """检查是否应该尝试重连 Redis（每60秒重试一次）"""
+        if self._use_redis or not self._redis_configured:
+            return False
+        import time
+        return (time.time() - self._last_redis_attempt) > 60
     
     def _get_key(self, prefix: str, key: str) -> str:
         """生成 Redis 键名"""
@@ -151,18 +173,21 @@ class CacheManager:
     def set(self, prefix: str, key: str, value: Any, expire_at: Optional[datetime] = None) -> bool:
         """
         设置缓存值
-        
+
         参数:
         - prefix: 缓存前缀（如 'chunk', 'file_info', 'encrypted_key'）
         - key: 缓存键
         - value: 缓存值
         - expire_at: 过期时间（绝对时间）
-        
+
         返回:
         - True 如果成功，False 如果失败
         """
         cache_key = self._get_key(prefix, key)
-        
+
+        if self._should_retry_redis():
+            self._try_connect_redis()
+
         if self._use_redis and self._redis_client:
             try:
                 serialized = self._serialize_value(value)
@@ -215,7 +240,10 @@ class CacheManager:
         - None，如果不存在或已过期
         """
         cache_key = self._get_key(prefix, key)
-        
+
+        if self._should_retry_redis():
+            self._try_connect_redis()
+
         if self._use_redis and self._redis_client:
             try:
                 value = self._redis_client.get(cache_key)

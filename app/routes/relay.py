@@ -642,21 +642,22 @@ async def delete_chunks(
         return not_found_response(msg=f"取件码不存在")
     
     # 提取查找码（前6位）用于缓存键
-    # code 就是查找码（6位），直接用作缓存键
     lookup_code = code
-    
-    # 删除所有文件块
-    # 使用查找码（前6位）作为键，服务器不需要知道后6位密钥码
-    if lookup_code in chunk_cache:
-        del chunk_cache[lookup_code]
-    
-    # 删除文件信息
-    if lookup_code in file_info_cache:
-        del file_info_cache[lookup_code]
-    
-    # 删除加密密钥
-    if lookup_code in encrypted_key_cache:
-        del encrypted_key_cache[lookup_code]
-    
+
+    # 获取用户ID（用于缓存隔离）
+    from app.models.file import File
+    file_record = db.query(File).filter(File.id == pickup_code.file_id).first()
+    user_id = file_record.uploader_id if file_record else None
+
+    # 使用用户隔离的缓存删除
+    chunk_cache.delete(lookup_code, user_id)
+    file_info_cache.delete(lookup_code, user_id)
+    encrypted_key_cache.delete(lookup_code, user_id)
+
+    # 同时清理无用户ID的旧缓存（向后兼容）
+    chunk_cache.delete(lookup_code, None)
+    file_info_cache.delete(lookup_code, None)
+    encrypted_key_cache.delete(lookup_code, None)
+
     return success_response(msg="所有文件块已删除")
 

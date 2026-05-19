@@ -141,54 +141,40 @@ class SenderService {
         missingChunks = Array.from({ length: chunks.length }, (_, i) => i);
       }
 
-      // 如果没有检查结果，默认上传所有块
+      // 如果检查失败或无结果，上传所有块
       if (missingChunks.length === 0 && existingChunks.length === 0) {
         missingChunks = Array.from({ length: chunks.length }, (_, i) => i);
       }
 
-      // 2.6. 通知开始上传（显示初始进度0%）
-      if (this.onProgress) {
-        this.onProgress(0, 0, chunks.length);
-      }
+      // 3. 并行上传缺失的文件块（跳过已存在的块）
+      console.log('[Sender] 开始并行上传加密文件块...');
+      const CONCURRENCY = 4;  // 同时上传的最大块数
+      let uploadedCount = existingChunks.length;
+      const totalChunks = chunks.length;
 
-      // 3. 上传缺失的文件块（跳过已存在的块）
-      console.log('[Sender] 开始上传加密文件块...');
-      let uploadedCount = existingChunks.length; // 已存在的块也算作已上传
-      
-      // 先更新已存在块的进度
+      // 先报告已复用块的进度
       if (existingChunks.length > 0) {
-        const progress = (existingChunks.length / chunks.length) * 100;
+        const progress = (existingChunks.length / totalChunks) * 100;
         if (this.onProgress) {
-          this.onProgress(progress, existingChunks.length, chunks.length);
-          console.log(`[Sender] 进度更新: ${progress.toFixed(1)}% (${existingChunks.length}/${chunks.length} 已复用)`);
+          this.onProgress(progress, existingChunks.length, totalChunks);
         }
       }
-      
-      // 上传缺失的块
-      for (const i of missingChunks) {
+
+      // 并行上传函数
+      const uploadOneChunk = async (i) => {
         const chunk = chunks[i];
-        
-        // 加密文件块
         const encryptedChunk = await encryptChunk(chunk, this.encryptionKey);
-        
-        // 计算哈希（用于验证完整性）
         const chunkHash = await calculateChunkHash(encryptedChunk);
-        
-        // 上传到服务器
         const formData = new FormData();
         formData.append('chunk_data', encryptedChunk, `chunk_${i}.encrypted`);
-        formData.append('chunk_index', i.toString()); // 将 chunk_index 作为 Form 数据传递
-        
-        const uploadUrl = `${this.apiBase}/relay/codes/${this.lookupCode}/upload-chunk`;
-        
-        const response = await fetch(
-          uploadUrl,
-          {
-            method: 'POST',
-            headers: getAuthHeaders(), // 添加 Authorization 头
-            body: formData
-          }
-        );
+        formData.append('chunk_index', i.toString());
+        const uploadUrl = `${this.apiBase}/relay/codes/${this.lookupCode}/upload-chunk?chunk_index=${i}`;
+
+        const response = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: formData
+        });
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
@@ -200,25 +186,27 @@ class SenderService {
           throw new Error(result.msg || `上传块 ${i} 失败`);
         }
 
-        // 如果服务器返回 reused=true，说明块已存在（通过映射表复用）
         if (result.data.reused) {
-          console.log(`[Sender] ✓ 块 ${i + 1}/${chunks.length} 已复用（跳过上传）`);
+          console.log(`[Sender] ✓ 块 ${i + 1}/${totalChunks} 已复用`);
         } else {
-          // 验证服务器返回的哈希（只有新上传的块才需要验证）
-          if (result.data.chunkHash !== chunkHash) {
-            throw new Error(`块 ${i} 哈希验证失败，数据可能损坏`);
+          if (result.data.chunkHash && result.data.chunkHash !== chunkHash) {
+            throw new Error(`块 ${i} 哈希验证失败`);
           }
-          console.log(`[Sender] ✓ 块 ${i + 1}/${chunks.length} 上传成功`);
+          console.log(`[Sender] ✓ 块 ${i + 1}/${totalChunks} 上传成功`);
         }
+        return i;
+      };
 
-        uploadedCount++;
+      // 分批并行执行
+      for (let start = 0; start < missingChunks.length; start += CONCURRENCY) {
+        const batch = missingChunks.slice(start, start + CONCURRENCY);
+        await Promise.all(batch.map(i => uploadOneChunk(i)));
+
+        uploadedCount += batch.length;
         this.currentChunkIndex = uploadedCount;
-        
-        // 更新进度（在每个块上传完成后立即更新）
-        const progress = (uploadedCount / chunks.length) * 100;
+        const progress = (uploadedCount / totalChunks) * 100;
         if (this.onProgress) {
-          this.onProgress(progress, uploadedCount, chunks.length);
-          console.log(`[Sender] 进度更新: ${progress.toFixed(1)}% (${uploadedCount}/${chunks.length})`);
+          this.onProgress(progress, uploadedCount, totalChunks);
         }
       }
 

@@ -46,6 +46,22 @@ uvicorn_access_logger = logging.getLogger("uvicorn.access")
 uvicorn_access_logger.addFilter(access_filter)
 logger.info("访问日志过滤器已配置：将过滤状态查询、上传/下载块等频繁请求的日志")
 
+# 安全检查：启动时验证关键配置
+def _startup_security_check():
+    warnings = []
+    if settings.JWT_SECRET_KEY == "change-me-in-production":
+        warnings.append("JWT_SECRET_KEY 使用默认值，生产环境请务必更改！")
+    if not settings.DEDUPE_PEPPER:
+        warnings.append("DEDUCE_PEPPER 未设置，去重指纹保护较弱，建议在 .env 中配置随机值")
+    if warnings:
+        logger.warning("=" * 50)
+        logger.warning("⚠ 安全配置警告:")
+        for w in warnings:
+            logger.warning(f"  - {w}")
+        logger.warning("=" * 50)
+
+_startup_security_check()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
